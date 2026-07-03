@@ -92,22 +92,41 @@ Durante cada jogada, o jogo exibe mensagens relacionando a partida com conceitos
 
 ## 🚀 Instalação e Execução
 
-### Pré-requisitos
-- Python 3.10 ou superior
+### Passo 1 — Instale o Python
 
-### Instalar dependências
+Acesse **https://www.python.org/downloads** e instale a versão mais recente.  
+> Marque a opção **"Add Python to PATH"** durante a instalação.
+
+### Passo 2 — Baixe o jogo
+
+**Opção A — Com Git instalado:**
+```bash
+git clone https://github.com/juliovalera/futebol-botao-python.git
+cd futebol-botao-python
+```
+
+**Opção B — Sem Git (mais simples):**
+1. Clique no botão verde **`<> Code`** nesta página
+2. Escolha **`Download ZIP`**
+3. Extraia o arquivo ZIP em uma pasta de sua preferência
+
+### Passo 3 — Instale o Pygame
+
+Abra o terminal (Prompt de Comando ou PowerShell) dentro da pasta do jogo e execute:
 
 ```bash
 pip install pygame-ce
 ```
 
-> ⚠️ **Atenção:** Se você tiver Python 3.13+, use `pygame-ce` (Community Edition) em vez de `pygame`, pois o pygame clássico ainda não tem binário pré-compilado para versões mais recentes do Python.
+> ⚠️ **Atenção:** Use sempre `pygame-ce` (Community Edition) — compatível com todas as versões recentes do Python.
 
-### Executar o jogo
+### Passo 4 — Execute o jogo
 
 ```bash
 python main.py
 ```
+
+Pronto! A janela do jogo vai abrir. Pressione **F11** para tela cheia. 🎮
 
 ---
 
