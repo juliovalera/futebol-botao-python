@@ -193,7 +193,7 @@ Este projeto é distribuído sob a licença **MIT** — livre para usar, copiar,
 
 <div align="center">
 
-Feito com ❤️ para a educação pública brasileira  
+Feito com ❤️ para a educação pública paulista  
 **Julho de 2026**
 
 </div>
