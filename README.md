@@ -293,31 +293,6 @@ Feito com ❤️ para a educação pública paulista
 </div>
 
 
-**Jogo pedagógico de Futebol de Botão desenvolvido em Python + Pygame**  
-*Para aulas de Matemática, Física e Programação na rede pública de ensino*
-
-</div>
-
----
-
-## 🎮 Sobre o Jogo
-
-**Futebol de Botão** é um jogo digital que simula o clássico futebol de mesa/botão, desenvolvido como ferramenta pedagógica para **estudantes do Ensino Fundamental e Médio**. Enquanto jogam, os alunos visualizam e praticam conceitos de **Matemática, Física e Lógica de Programação** de forma lúdica e interativa.
-
-O jogo é **100% programado em Python**, sem imagens ou sons externos — todos os gráficos, animações, física e sons são gerados pelo próprio código, tornando-o também uma excelente referência de aprendizado de programação.
-
----
-
-## 📸 Telas do Jogo
-
-| Menu Principal | Partida em andamento |
-|:-:|:-:|
-| *Menu com 3 modos + tela Sobre* | *Campo com placar, cronômetro e mira* |
-
-> **Dica:** Execute o jogo e pressione **F11** para jogar em tela cheia!
-
----
-
 ## 🧠 Conceitos Pedagógicos Abordados
 
 Durante cada jogada, o jogo exibe mensagens relacionando a partida com conceitos reais:
