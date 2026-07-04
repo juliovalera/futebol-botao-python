@@ -332,19 +332,30 @@ class Botao(Objeto):
         self.numero = numero  # número do botão dentro do time
         self.selecionado = False
 
-    def desenhar(self, tela, fonte_pequena):
-        """Desenha o botão com borda de destaque se selecionado."""
+    def desenhar(self, tela, fonte_pequena, toque_count=0, maxed_out=False):
+        """Desenha o botão com borda de destaque se selecionado.
+        toque_count: número de toques usados (regra 12 toques).
+        maxed_out: True se o botão atingiu o limite individual de 3 toques.
+        """
         # Sombra sutil
         pygame.draw.circle(tela, CINZA_ESCURO, (self.pos[0]+2, self.pos[1]+2), self.raio)
-        # Corpo do botão
-        pygame.draw.circle(tela, self.cor, self.pos, self.raio)
-        # Borda branca
-        cor_borda = AMARELO if self.selecionado else BRANCO
+        # Corpo do botão (escurecido se esgotado na regra de 12 toques)
+        cor_corpo = CINZA_ESCURO if maxed_out else self.cor
+        pygame.draw.circle(tela, cor_corpo, self.pos, self.raio)
+        # Borda
+        cor_borda = AMARELO if self.selecionado else (CINZA if maxed_out else BRANCO)
         pygame.draw.circle(tela, cor_borda, self.pos, self.raio, 2)
         # Número do botão (para identificação)
         txt = fonte_pequena.render(str(self.numero + 1), True, BRANCO)
         tela.blit(txt, (self.pos[0] - txt.get_width()//2,
                         self.pos[1] - txt.get_height()//2))
+        # Indicador de toques individuais (regra de 12 toques)
+        if toque_count > 0 or maxed_out:
+            fonte_tiny = pygame.font.SysFont("Arial", 12, bold=True)
+            cor_ind = VERMELHO if maxed_out else LARANJA
+            txt_tc = fonte_tiny.render(f"{toque_count}/3", True, cor_ind)
+            tela.blit(txt_tc, (self.pos[0] - txt_tc.get_width()//2,
+                               self.pos[1] + self.raio + 2))
 
 
 class Bola(Objeto):
@@ -624,6 +635,25 @@ def desenhar_hud(tela, fontes, estado):
     txt_turno = fonte_media.render(turno_str, True, cor_turno)
     tela.blit(txt_turno, (10, 5))
 
+    # Indicador da regra dos 12 toques (canto esquerdo, abaixo do turno)
+    if estado.get("regra") == "12toques":
+        tc = estado.get("toques_coletivos", 0)
+        cor_tc = VERMELHO if tc >= 10 else (LARANJA if tc >= 7 else AMARELO)
+        txt_tc = fonte_pequena.render(f"Toques: {tc}/12", True, cor_tc)
+        tela.blit(txt_tc, (10, 36))
+        txt_reg = fonte_pequena.render("REGRA: 12 TOQUES", True, CIANO)
+        tela.blit(txt_reg, (10, 56))
+        # Cronômetro de 5 s por toque (só quando é vez de um humano)
+        tt = estado.get("timer_toque", 5 * FRAMES_POR_SEG)
+        seg_rest = max(0, math.ceil(tt / FRAMES_POR_SEG))
+        fase_ativa = estado.get("fase", "") in ("selecionar", "mirar")
+        turno_humano = (estado.get("turno") == 0 or
+                        estado.get("nome_j2") != "COMPUTADOR")
+        if fase_ativa and turno_humano:
+            cor_tt = VERMELHO if seg_rest <= 2 else (LARANJA if seg_rest <= 3 else BRANCO)
+            txt_tt = fonte_media.render(f"⏱ {seg_rest}s", True, cor_tt)
+            tela.blit(txt_tt, (10, 72))
+
     # Botão de tela cheia (canto superior direito)
     desenhar_btn_fullscreen(tela)
     # Cronômetro e turnos (à esquerda do botão)
@@ -640,16 +670,21 @@ def desenhar_hud(tela, fontes, estado):
     txt_turn = fonte_pequena.render(f"Turno: {estado['num_turno']}", True, CINZA)
     tela.blit(txt_turn, (BTN_FS_RECT.left - txt_turn.get_width() - 8, 52))
 
-    # Fase do turno
-    fase_str = {
-        "selecionar":  "Clique em um botão para selecionar",
-        "mirar":       "Arraste para mirar e definir a força",
-        "animando":    "Aguardando...",
-        "computador":  "Computador jogando...",
-        "gol":         "⚽  G O L !  ⚽",
-    }.get(estado['fase'], "")
-    cor_fase = AMARELO if estado['fase'] == "gol" else BEGE
-    txt_fase = fonte_pequena.render(fase_str, True, cor_fase)
+    # Fase do turno / mensagem de infração
+    if estado["fase"] == "infracao":
+        tipo_inf = estado.get("infracao_tipo", "falta")
+        cor_fase = VERMELHO if tipo_inf == "falta" else AMARELO
+        txt_fase = fonte_media.render(estado.get("infracao_msg", "FALTA!"), True, cor_fase)
+    else:
+        fase_str = {
+            "selecionar":  "Clique em um botão para selecionar",
+            "mirar":       "Arraste para mirar e definir a força",
+            "animando":    "Aguardando...",
+            "computador":  "Computador jogando...",
+            "gol":         "⚽  G O L !  ⚽",
+        }.get(estado['fase'], "")
+        cor_fase = AMARELO if estado['fase'] == "gol" else BEGE
+        txt_fase = fonte_pequena.render(fase_str, True, cor_fase)
     tela.blit(txt_fase, (LARGURA // 2 - txt_fase.get_width() // 2, CAMPO_Y + CAMPO_ALT + 8))
 
     # Mensagem pedagógica (rodapé)
@@ -838,39 +873,83 @@ def tudo_parado(botoes_t0, botoes_t1, bola):
     return all(obj.esta_parado() for obj in todos)
 
 
-def jogada_computador(botoes_cpu, bola):
+def jogada_computador(botoes_cpu, bola, toques_individuais=None):
     """
-    Realiza a jogada automática do computador.
-    Estratégia simples: escolhe o botão mais próximo da bola
-    e aponta em direção ao gol adversário (lado direito).
-    MELHORIA FUTURA: adicionar mais inteligência, ângulos, passes.
+    Realiza a jogada automática do computador com estratégia aprimorada.
+    Considera alinhamento com o gol, situação defensiva e regra de 12 toques.
+    O time da CPU (vermelho, time 1) ataca o gol esquerdo.
     """
     if not botoes_cpu:
         return None, (0.0, 0.0)
 
-    # Escolhe o botão mais próximo da bola
-    botao_escolhido = min(botoes_cpu,
-                          key=lambda b: b.distancia_para(bola))
+    # Gol que a CPU ataca (gol esquerdo: x < CAMPO_X)
+    gol_atq_x = CAMPO_X - 10
+    gol_atq_y = GOL_Y + GOL_ALT // 2
+    # Gol que a CPU defende (gol direito: x > CAMPO_X + CAMPO_LARG)
+    gol_def_x = CAMPO_X + CAMPO_LARG + 10
+    gol_def_y = GOL_Y + GOL_ALT // 2
 
-    # Direção: botão → bola (com leve desvio aleatório para imprevisibilidade)
-    dx = bola.x - botao_escolhido.x
-    dy = bola.y - botao_escolhido.y
-    dist = math.sqrt(dx * dx + dy * dy)
+    # Filtra botões disponíveis: respeita limite individual de 3 toques
+    if toques_individuais:
+        botoes_disp = [b for b in botoes_cpu
+                       if toques_individuais.get((b.time, b.numero), 0) < 3]
+        if not botoes_disp:
+            botoes_disp = botoes_cpu  # fallback: usa todos
+    else:
+        botoes_disp = botoes_cpu
 
-    if dist < 1:
-        return botao_escolhido, (0.0, 0.0)
+    # Modo defensivo: bola próxima do próprio gol → prioridade é afastar
+    dist_defesa = math.sqrt((bola.x - gol_def_x)**2 + (bola.y - gol_def_y)**2)
+    modo_defesa = dist_defesa < 160
 
-    # Adiciona pequeno erro aleatório (torna o computador imperfeito)
-    angulo_base = math.atan2(dy, dx)
-    erro = random.uniform(-0.3, 0.3)  # radianos
+    if modo_defesa:
+        # Usa o botão mais próximo da bola
+        botao_escolhido = min(botoes_disp, key=lambda b: b.distancia_para(bola))
+        # Aponta em direção ao gol adversário (com erro pequeno)
+        dx = gol_atq_x - botao_escolhido.x
+        dy = gol_atq_y - botao_escolhido.y
+        angulo_base = math.atan2(dy, dx)
+        erro  = random.uniform(-0.12, 0.12)
+        forca = random.uniform(0.85, 1.0) * VELOCIDADE_MAX
+    else:
+        # Escolhe o botão mais bem posicionado: alinhado na linha botão→bola→gol
+        def score_botao(b):
+            dx_pb = bola.x - b.x
+            dy_pb = bola.y - b.y
+            dist_pb = max(1.0, math.sqrt(dx_pb**2 + dy_pb**2))
+            dx_bg = gol_atq_x - bola.x
+            dy_bg = gol_atq_y - bola.y
+            dist_bg = max(1.0, math.sqrt(dx_bg**2 + dy_bg**2))
+            # Cosseno do ângulo entre vetores (botão→bola) e (bola→gol)
+            cos_alg = (dx_pb * dx_bg + dy_pb * dy_bg) / (dist_pb * dist_bg)
+            return cos_alg - dist_pb / 350.0
+
+        botao_escolhido = max(botoes_disp, key=score_botao)
+
+        # Calcula ponto de mira para deflectir a bola em direção ao gol:
+        # O botão deve vir do lado oposto ao gol, empurrando a bola "para lá".
+        dx_bg = gol_atq_x - bola.x
+        dy_bg = gol_atq_y - bola.y
+        dist_bg = max(1.0, math.sqrt(dx_bg**2 + dy_bg**2))
+        offset = RAIO_BOLA + RAIO_BOTAO + 2
+        aim_x = bola.x - (dx_bg / dist_bg) * offset
+        aim_y = bola.y - (dy_bg / dist_bg) * offset
+
+        dx = aim_x - botao_escolhido.x
+        dy = aim_y - botao_escolhido.y
+        angulo_base = math.atan2(dy, dx)
+        # Erro reduzido em relação à versão anterior (±0.15 rad em vez de ±0.3)
+        erro = random.uniform(-0.15, 0.15)
+        dist_bola = botao_escolhido.distancia_para(bola)
+        # Tiro suave quando próximo; tiro forte quando longe
+        if dist_bola < 100:
+            forca = random.uniform(0.55, 0.80) * VELOCIDADE_MAX
+        else:
+            forca = random.uniform(0.70, 0.95) * VELOCIDADE_MAX
+
     angulo = angulo_base + erro
-
-    # Força aleatória entre 50% e 90% do máximo
-    forca = random.uniform(0.5, 0.9) * VELOCIDADE_MAX
-
     vx = math.cos(angulo) * forca
     vy = math.sin(angulo) * forca
-
     return botao_escolhido, (vx, vy)
 
 
@@ -928,7 +1007,7 @@ def tela_sobre(tela, fontes):
         ("texto",     "Sem imagens ou sons externos — tudo é programado!", BRANCO),
         ("separador", "",                                                 CINZA),
 
-        ("texto",     "Versão 1.0 — Julho de 2026",                       CINZA),
+        ("texto",     "Versão 2.0 — Julho de 2026",                       CINZA),
     ]
 
     # Pré-renderiza todas as linhas
@@ -1037,6 +1116,240 @@ def tela_sobre(tela, fontes):
                     alternar_tela_cheia()
                 elif btn_voltar.collidepoint(pos_esc):
                     return
+
+
+def tela_cara_ou_coroa(tela, fontes, modo):
+    """
+    Anima uma moeda girando e sorteia quem começa jogando.
+    Retorna 0 (time azul/jogador 1) ou 1 (time vermelho/computador).
+    """
+    clock  = pygame.time.Clock()
+    nome_j1 = "AZUL"
+    nome_j2 = "COMPUTADOR" if modo == MODO_COMPUTADOR else "VERMELHO"
+    cor_j1  = AZUL
+    cor_j2  = VERMELHO
+
+    resultado = random.randint(0, 1)   # sorteia imediatamente
+
+    # ── Fases da animação ────────────────────────────────
+    # fase 0: moeda girando (60 frames)
+    # fase 1: moeda aterrissa na face correta (30 frames)
+    # fase 2: exibe vencedor + aguarda clique/tecla
+    GIRO_FRAMES    = 90   # duração do giro
+    POUSO_FRAMES   = 30
+    fase_anim      = 0
+    frame_anim     = 0
+    aguardando     = False
+
+    cx = LARGURA  // 2
+    cy = ALTURA   // 2
+    R  = 68   # raio da moeda
+
+    while True:
+        tela.fill((20, 20, 40))
+
+        # Estrelas decorativas
+        random.seed(7)
+        for _ in range(40):
+            sx = random.randint(0, LARGURA)
+            sy = random.randint(0, ALTURA)
+            pygame.draw.circle(tela, (120, 120, 160), (sx, sy), 1)
+        random.seed()
+
+        # Título
+        t1 = fontes["grande"].render("CARA OU COROA", True, AMARELO)
+        tela.blit(t1, (cx - t1.get_width() // 2, 60))
+        t2 = fontes["pequena"].render("Sorteando quem começa jogando...", True, BEGE)
+        tela.blit(t2, (cx - t2.get_width() // 2, 108))
+
+        # ── Desenho da moeda ────────────────────────────────
+        if fase_anim == 0:
+            # Giro: escala horizontal oscila com seno → ilusão de rotação 3D
+            t_frac   = frame_anim / GIRO_FRAMES
+            # acelera no início, desacelera no fim
+            omega    = 2 * math.pi * (6 * t_frac - 3 * t_frac ** 2)
+            escala_x = abs(math.cos(omega))
+            w_moeda  = max(4, int(R * 2 * escala_x))
+            # Alterna cor da face durante o giro
+            face_visivel = int(omega / math.pi) % 2
+            cor_moeda = AMARELO if face_visivel == 0 else CINZA
+            cor_texto_moeda = PRETO
+        elif fase_anim == 1:
+            # Pouso: escala vai de 0 até 1
+            t_pouso  = frame_anim / POUSO_FRAMES
+            escala_x = t_pouso
+            w_moeda  = max(4, int(R * 2 * escala_x))
+            cor_moeda = AMARELO if resultado == 0 else CINZA
+            cor_texto_moeda = PRETO
+        else:
+            # Resultado fixo
+            w_moeda  = R * 2
+            cor_moeda = AMARELO if resultado == 0 else CINZA
+            cor_texto_moeda = PRETO
+
+        moeda_rect = pygame.Rect(cx - w_moeda // 2, cy - R, w_moeda, R * 2)
+        # Sombra
+        pygame.draw.ellipse(tela, CINZA_ESCURO,
+                            (moeda_rect.x + 6, moeda_rect.y + 6,
+                             moeda_rect.width, moeda_rect.height))
+        # Moeda
+        pygame.draw.ellipse(tela, cor_moeda, moeda_rect)
+        pygame.draw.ellipse(tela, BRANCO, moeda_rect, 3)
+        # Letra C/K no centro
+        if w_moeda > 20:
+            letra = "C" if (fase_anim < 2 and (int(frame_anim * 0.3) % 2 == 0)) else \
+                    ("C" if resultado == 0 else "K")
+            tl = fontes["grande"].render(letra, True, cor_texto_moeda)
+            tela.blit(tl, (moeda_rect.centerx - tl.get_width() // 2,
+                           moeda_rect.centery - tl.get_height() // 2))
+
+        # ── Resultado (fase 2) ──────────────────────────────
+        if aguardando:
+            nome_venc = nome_j1 if resultado == 0 else nome_j2
+            cor_venc  = cor_j1  if resultado == 0 else cor_j2
+            face_str  = "CARA" if resultado == 0 else "COROA"
+            t_face = fontes["media"].render(f"Saiu: {face_str}!", True, BRANCO)
+            tela.blit(t_face, (cx - t_face.get_width() // 2, cy + R + 20))
+            t_vez = fontes["grande"].render(f"{nome_venc} começa!", True, cor_venc)
+            tela.blit(t_vez, (cx - t_vez.get_width() // 2, cy + R + 55))
+            t_cont = fontes["pequena"].render(
+                "Clique ou pressione qualquer tecla para jogar", True, CINZA)
+            tela.blit(t_cont, (cx - t_cont.get_width() // 2, cy + R + 100))
+
+        desenhar_btn_fullscreen(tela)
+        atualizar_tela(tela)
+        clock.tick(FRAMES_POR_SEG)
+
+        # ── Avança animação ─────────────────────────────────
+        if fase_anim == 0:
+            frame_anim += 1
+            if frame_anim >= GIRO_FRAMES:
+                fase_anim  = 1
+                frame_anim = 0
+        elif fase_anim == 1:
+            frame_anim += 1
+            if frame_anim >= POUSO_FRAMES:
+                fase_anim  = 2
+                frame_anim = 0
+                aguardando = True
+
+        for evento in pygame.event.get():
+            if evento.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if evento.type == pygame.KEYDOWN:
+                if evento.key == pygame.K_F11:
+                    alternar_tela_cheia()
+                elif aguardando:
+                    return resultado
+            if evento.type == pygame.MOUSEBUTTONDOWN and evento.button == 1:
+                pos_esc = escalar_mouse(evento.pos)
+                if BTN_FS_RECT.collidepoint(pos_esc):
+                    alternar_tela_cheia()
+                elif aguardando:
+                    return resultado
+
+
+def tela_regras(tela, fontes):
+    """
+    Tela de escolha de regras do jogo.
+    Retorna "normal", "12toques" ou "voltar" (para retornar ao menu de modo).
+    """
+    fonte_grande  = fontes["grande"]
+    fonte_media   = fontes["media"]
+    fonte_pequena = fontes["pequena"]
+    clock = pygame.time.Clock()
+
+    # Dois botões lado a lado + botão voltar
+    btn_normal  = pygame.Rect(50,  185, 375, 215)
+    btn_12toque = pygame.Rect(475, 185, 375, 215)
+    btn_voltar  = pygame.Rect(LARGURA // 2 - 130, 435, 260, 44)
+
+    descr_normal = [
+        "Regra clássica do jogo.",
+        "Times alternam jogadas sem",
+        "limite de toques.",
+        "Ideal para iniciantes.",
+    ]
+    descr_12 = [
+        "Até 12 toques coletivos por posse.",
+        "Cada botão: máx. 3 toques.",
+        "FALTA: errar a bola ou tocar",
+        "adversário antes da bola.",
+    ]
+
+    while True:
+        tela.fill(VERDE_ESCURO)
+
+        # Título
+        t1 = fonte_grande.render("ESCOLHA AS REGRAS", True, AMARELO)
+        tela.blit(t1, (LARGURA // 2 - t1.get_width() // 2, 90))
+        t2 = fonte_pequena.render("Selecione o conjunto de regras para esta partida", True, BEGE)
+        tela.blit(t2, (LARGURA // 2 - t2.get_width() // 2, 140))
+
+        mx, my = escalar_mouse(pygame.mouse.get_pos())
+        h_n = btn_normal.collidepoint(mx, my)
+        h_12 = btn_12toque.collidepoint(mx, my)
+        h_v = btn_voltar.collidepoint(mx, my)
+
+        # ── Botão Regra Normal ───────────────────────────────
+        pygame.draw.rect(tela, (20, 60, 160) if not h_n else AZUL,
+                         btn_normal, border_radius=14)
+        pygame.draw.rect(tela, BRANCO, btn_normal, 2, border_radius=14)
+        tn = fonte_media.render("⚪  Regra Normal", True, BRANCO)
+        tela.blit(tn, (btn_normal.centerx - tn.get_width() // 2, btn_normal.y + 16))
+        pygame.draw.line(tela, (100, 130, 220),
+                         (btn_normal.x + 20, btn_normal.y + 52),
+                         (btn_normal.right - 20, btn_normal.y + 52), 1)
+        for i, linha in enumerate(descr_normal):
+            tl = fonte_pequena.render(linha, True, BEGE)
+            tela.blit(tl, (btn_normal.centerx - tl.get_width() // 2,
+                           btn_normal.y + 62 + i * 26))
+
+        # ── Botão Regra 12 Toques ────────────────────────────
+        pygame.draw.rect(tela, (140, 20, 20) if not h_12 else VERMELHO,
+                         btn_12toque, border_radius=14)
+        pygame.draw.rect(tela, BRANCO, btn_12toque, 2, border_radius=14)
+        t12 = fonte_media.render("🔴  Regra dos 12 Toques", True, BRANCO)
+        tela.blit(t12, (btn_12toque.centerx - t12.get_width() // 2, btn_12toque.y + 16))
+        pygame.draw.line(tela, (220, 100, 100),
+                         (btn_12toque.x + 20, btn_12toque.y + 52),
+                         (btn_12toque.right - 20, btn_12toque.y + 52), 1)
+        for i, linha in enumerate(descr_12):
+            tl = fonte_pequena.render(linha, True, BEGE)
+            tela.blit(tl, (btn_12toque.centerx - tl.get_width() // 2,
+                           btn_12toque.y + 62 + i * 26))
+
+        # ── Botão Voltar ─────────────────────────────────────
+        pygame.draw.rect(tela, CINZA_ESCURO, btn_voltar, border_radius=10)
+        pygame.draw.rect(tela, CIANO if h_v else CINZA, btn_voltar, 2, border_radius=10)
+        tv = fonte_media.render("← Voltar", True, BRANCO)
+        tela.blit(tv, (btn_voltar.centerx - tv.get_width() // 2,
+                       btn_voltar.centery - tv.get_height() // 2))
+
+        desenhar_btn_fullscreen(tela)
+        atualizar_tela(tela)
+        clock.tick(FRAMES_POR_SEG)
+
+        for evento in pygame.event.get():
+            if evento.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if evento.type == pygame.KEYDOWN:
+                if evento.key == pygame.K_ESCAPE:
+                    return "voltar"
+                if evento.key == pygame.K_F11:
+                    alternar_tela_cheia()
+            if evento.type == pygame.MOUSEBUTTONDOWN and evento.button == 1:
+                pos_esc = escalar_mouse(evento.pos)
+                if BTN_FS_RECT.collidepoint(pos_esc):
+                    alternar_tela_cheia()
+                elif btn_normal.collidepoint(pos_esc):
+                    return "normal"
+                elif btn_12toque.collidepoint(pos_esc):
+                    return "12toques"
+                elif btn_voltar.collidepoint(pos_esc):
+                    return "voltar"
 
 
 def tela_menu(tela, fontes):
@@ -1192,7 +1505,7 @@ def tela_fim_de_jogo(tela, fontes, estado):
 # LOOP PRINCIPAL DO JOGO
 # ──────────────────────────────────────────────
 
-def rodar_jogo(tela, fontes, modo, sons=None):
+def rodar_jogo(tela, fontes, modo, regra="normal", turno_inicial=0, sons=None):
     """
     Loop principal de uma partida.
     Gerencia eventos, atualiza física e desenha tudo na tela.
@@ -1209,22 +1522,37 @@ def rodar_jogo(tela, fontes, modo, sons=None):
     # ── Estado do jogo ───────────────────────────────────
     nome_j2 = "COMPUTADOR" if modo == MODO_COMPUTADOR else "VERMELHO"
     estado = {
-        "gols_j1":        0,
-        "gols_j2":        0,
-        "nome_j1":        "AZUL",
-        "nome_j2":        nome_j2,
-        "turno":          0,          # 0 = time azul, 1 = time vermelho
-        "num_turno":      1,
-        "fase":           "selecionar",  # selecionar | mirar | animando | computador | gol
-        "botao_sel":      None,        # botão selecionado
-        "pos_mouse":      (0, 0),
-        "msg_pedagogica": random.choice(MSGS_PEDAGOGICAS),
-        "timer_gol":      0,           # frames após gol
-        "gol_time":       0,           # qual time marcou (0 ou 1)
-        "particulas":     [],          # lista de Particula para o confête
-        "max_turnos":     40,          # (legado) mantido para compatibilidade
-        "tempo_seg":      120,         # cronômetro regressivo: 2 minutos
-        "frames_acum":    0,           # acumulador de frames para contar 1 segundo
+        "gols_j1":           0,
+        "gols_j2":           0,
+        "nome_j1":           "AZUL",
+        "nome_j2":           nome_j2,
+        "turno":             turno_inicial,  # definido pelo cara ou coroa
+        "num_turno":         1,
+        # Fases: selecionar | mirar | animando | computador | gol | infracao
+        "fase":              ("computador" if modo == MODO_COMPUTADOR and turno_inicial == 1
+                              else "selecionar"),
+        "botao_sel":         None,  # botão selecionado para chutar
+        "pos_mouse":         (0, 0),
+        "msg_pedagogica":    random.choice(MSGS_PEDAGOGICAS),
+        "timer_gol":         0,
+        "gol_time":          0,
+        "particulas":        [],
+        "max_turnos":        40,    # (legado)
+        "tempo_seg":         120,
+        "frames_acum":       0,
+        # ── Regra dos 12 toques ──────────────────────────────
+        "regra":             regra,
+        "toques_coletivos":  0,     # toques na posse atual
+        "toques_individuais": {},   # {(time, numero): count}
+        "botao_lancado":     None,  # referência ao botão lançado no turno atual
+        "primeira_colisao":  None,  # "bola" | "oponente" | None
+        "infracao_msg":      "",
+        "infracao_timer":    0,
+        "infracao_tipo":     "falta",  # "falta" | "fim_posse"
+        # ── Timer de 5 segundos por toque ────────────────────
+        "timer_toque":          5 * FRAMES_POR_SEG,  # 300 frames = 5 s
+        # ── Bola tocou botão adversário ─────────────────
+        "bola_tocou_oponente":  False,
     }
 
     delay_computador = 0   # pequeno delay antes da jogada do PC
@@ -1233,6 +1561,7 @@ def rodar_jogo(tela, fontes, modo, sons=None):
     # objetos estiverem sobrepostos, causando distorção.
     cd_som_bola  = 0   # cooldown para som botão↔bola
     cd_som_botao = 0   # cooldown para som botão↔botão
+    cd_bola_op   = 0   # cooldown para deteção bola↔botão adversario
 
     # ── Loop principal ───────────────────────────────────
     while True:
@@ -1262,6 +1591,11 @@ def rodar_jogo(tela, fontes, modo, sons=None):
                         dist = math.sqrt((b.x - pos_j[0])**2 +
                                          (b.y - pos_j[1])**2)
                         if dist <= b.raio + 5:
+                            # Na regra dos 12 toques, ignora botão esgotado
+                            k = (b.time, b.numero)
+                            if (estado["regra"] == "12toques" and
+                                    estado["toques_individuais"].get(k, 0) >= 3):
+                                break
                             # Deseleciona anterior
                             if estado["botao_sel"]:
                                 estado["botao_sel"].selecionado = False
@@ -1277,6 +1611,10 @@ def rodar_jogo(tela, fontes, modo, sons=None):
                         dist = math.sqrt((b.x - pos_j[0])**2 +
                                          (b.y - pos_j[1])**2)
                         if dist <= b.raio + 5:
+                            k = (b.time, b.numero)
+                            if (estado["regra"] == "12toques" and
+                                    estado["toques_individuais"].get(k, 0) >= 3):
+                                break
                             if estado["botao_sel"]:
                                 estado["botao_sel"].selecionado = False
                             b.selecionado = True
@@ -1299,6 +1637,11 @@ def rodar_jogo(tela, fontes, modo, sons=None):
                         b.selecionado = False
                         estado["botao_sel"] = None
                         estado["fase"] = "animando"
+                        # Rastreamento para a regra dos 12 toques
+                        estado["botao_lancado"]   = b
+                        estado["primeira_colisao"] = None
+                        estado["bola_tocou_oponente"] = False
+                        estado["timer_toque"]     = 5 * FRAMES_POR_SEG
                         estado["msg_pedagogica"] = random.choice(MSGS_PEDAGOGICAS)
                         if sons and sons.get("chute"):
                             sons["chute"].play()
@@ -1308,10 +1651,16 @@ def rodar_jogo(tela, fontes, modo, sons=None):
             delay_computador += 1
             if delay_computador >= FRAMES_POR_SEG:  # espera 1 segundo
                 delay_computador = 0
-                botao_cpu, (vx, vy) = jogada_computador(botoes_t1, bola)
+                ti_cpu = (estado["toques_individuais"]
+                          if estado["regra"] == "12toques" else None)
+                botao_cpu, (vx, vy) = jogada_computador(botoes_t1, bola, ti_cpu)
                 if botao_cpu:
                     botao_cpu.vx = vx
                     botao_cpu.vy = vy
+                    # Rastreamento para a regra dos 12 toques
+                    estado["botao_lancado"]    = botao_cpu
+                    estado["primeira_colisao"] = None
+                    estado["bola_tocou_oponente"] = False
                 estado["fase"] = "animando"
                 estado["msg_pedagogica"] = random.choice(MSGS_PEDAGOGICAS)
 
@@ -1329,7 +1678,20 @@ def rodar_jogo(tela, fontes, modo, sons=None):
             # Colisões botão ↔ bola
             for b in todos_botoes:
                 if b.verificar_colisao(bola):
+                    # Captura velocidade da bola ANTES da colisão
+                    # (após a colisão frontal a bola pode parar — checar depois daria falso negativo)
+                    vel_bola_antes = abs(bola.vx) + abs(bola.vy)
                     b.resolver_colisao(bola)
+                    # Regra 12 toques: registra se o botão lançado tocou a bola
+                    if (estado["regra"] == "12toques" and
+                            estado.get("botao_lancado") is b and
+                            estado.get("primeira_colisao") is None):
+                        estado["primeira_colisao"] = "bola"
+                    # Detecta se a bola tocou botão adversário (qualquer regra)
+                    if (b.time != estado["turno"] and cd_bola_op == 0 and
+                            vel_bola_antes > 0.5):
+                        estado["bola_tocou_oponente"] = True
+                        cd_bola_op = 15
                     # Toca som apenas se o cooldown zerou e há velocidade real
                     if cd_som_bola == 0 and (abs(b.vx) + abs(b.vy)) > 1.0:
                         if sons and sons.get("bola"):
@@ -1343,6 +1705,14 @@ def rodar_jogo(tela, fontes, modo, sons=None):
                     bj = todos_botoes[j]
                     if bi.verificar_colisao(bj):
                         bi.resolver_colisao(bj)
+                        # Regra 12 toques: botão lançado acertou adversário antes da bola?
+                        if (estado["regra"] == "12toques" and
+                                estado.get("primeira_colisao") is None):
+                            blnc = estado.get("botao_lancado")
+                            if blnc is bi and bj.time != estado["turno"]:
+                                estado["primeira_colisao"] = "oponente"
+                            elif blnc is bj and bi.time != estado["turno"]:
+                                estado["primeira_colisao"] = "oponente"
                         if cd_som_botao == 0 and (abs(bi.vx) + abs(bi.vy)) > 1.0:
                             if sons and sons.get("botao"):
                                 sons["botao"].play()
@@ -1351,6 +1721,7 @@ def rodar_jogo(tela, fontes, modo, sons=None):
             # Decrementa cooldowns a cada frame
             if cd_som_bola  > 0: cd_som_bola  -= 1
             if cd_som_botao > 0: cd_som_botao -= 1
+            if cd_bola_op   > 0: cd_bola_op   -= 1
 
             # Verifica gol
             marcou = verificar_gol(bola)
@@ -1369,15 +1740,71 @@ def rodar_jogo(tela, fontes, modo, sons=None):
                 if sons and sons.get("gol"):
                     sons["gol"].play()
 
-            # Verifica se tudo parou
+            # Verifica se tudo parou → fim da jogada
             elif estado["fase"] == "animando" and tudo_parado(botoes_t0, botoes_t1, bola):
                 estado["num_turno"] += 1
-                # Alterna turno
-                estado["turno"] = 1 - estado["turno"]
-                if modo == MODO_COMPUTADOR and estado["turno"] == 1:
-                    estado["fase"] = "computador"
+                bola_oponente = estado["bola_tocou_oponente"]
+                estado["bola_tocou_oponente"] = False  # reseta para próxima jogada
+
+                if estado["regra"] == "12toques":
+                    # ── Avalia a jogada dentro da regra dos 12 toques ──
+                    prim_col   = estado.get("primeira_colisao")
+                    botao_lanc = estado.get("botao_lancado")
+                    infracao   = None
+                    fim_posse  = False
+
+                    if prim_col is None:
+                        infracao = "FALTA! O botão não tocou na bola."
+                    elif prim_col == "oponente":
+                        infracao = "FALTA! Adversário tocado antes da bola."
+                    elif botao_lanc:
+                        k = (botao_lanc.time, botao_lanc.numero)
+                        estado["toques_coletivos"] += 1
+                        estado["toques_individuais"][k] = (
+                            estado["toques_individuais"].get(k, 0) + 1)
+                        # Checa limites
+                        if estado["toques_individuais"][k] > 3:
+                            infracao = (f"FALTA! Botão {k[1]+1} ultrapassou "
+                                        "3 toques individuais.")
+                        elif estado["toques_coletivos"] >= 12:
+                            fim_posse = True
+                        elif bola_oponente:
+                            # Bola tocou botão adversário → transfere posse
+                            fim_posse = True
+
+                    # Limpa rastreamento do turno
+                    estado["botao_lancado"]    = None
+                    estado["primeira_colisao"] = None
+
+                    if infracao:
+                        estado["fase"]          = "infracao"
+                        estado["infracao_msg"]  = infracao
+                        estado["infracao_timer"] = 100
+                        estado["infracao_tipo"] = "falta"
+                    elif fim_posse:
+                        msg_posse = ("A bola tocou o adversário! Posse transferida."
+                                     if bola_oponente and estado["toques_coletivos"] < 12
+                                     else "Fim da posse! (12 toques atingidos)")
+                        estado["fase"]          = "infracao"
+                        estado["infracao_msg"]  = msg_posse
+                        estado["infracao_timer"] = 80
+                        estado["infracao_tipo"] = "fim_posse"
+                    else:
+                        # Mesma equipe continua jogando
+                        estado["timer_toque"] = 5 * FRAMES_POR_SEG
+                        if modo == MODO_COMPUTADOR and estado["turno"] == 1:
+                            estado["fase"] = "computador"
+                        else:
+                            estado["fase"] = "selecionar"
                 else:
-                    estado["fase"] = "selecionar"
+                    # Modo normal: alterna turno após cada jogada
+                    # (bola_oponente já implica troca de turno no modo normal)
+                    estado["turno"] = 1 - estado["turno"]
+                    estado["timer_toque"] = 5 * FRAMES_POR_SEG
+                    if modo == MODO_COMPUTADOR and estado["turno"] == 1:
+                        estado["fase"] = "computador"
+                    else:
+                        estado["fase"] = "selecionar"
 
         # ── Timer após gol ────────────────────────────────
         if estado["fase"] == "gol":
@@ -1391,18 +1818,70 @@ def rodar_jogo(tela, fontes, modo, sons=None):
                 botoes_t0 = criar_botoes_time(0)
                 botoes_t1 = criar_botoes_time(1)
                 bola      = criar_bola()
+                # Zera contagens da regra dos 12 toques
+                estado["toques_coletivos"]  = 0
+                estado["toques_individuais"] = {}
+                estado["botao_lancado"]     = None
+                estado["primeira_colisao"]  = None
+                estado["bola_tocou_oponente"] = False
                 # Alterna turno após gol
                 estado["turno"] = 1 - estado["turno"]
+                estado["timer_toque"] = 5 * FRAMES_POR_SEG
                 if modo == MODO_COMPUTADOR and estado["turno"] == 1:
                     estado["fase"] = "computador"
                 else:
                     estado["fase"] = "selecionar"
 
+        # ── Fase de infração (regra dos 12 toques) ───────────
+        if estado["fase"] == "infracao":
+            estado["infracao_timer"] -= 1
+            if estado["infracao_timer"] <= 0:
+                # Transfere posse para o adversário e zera contagens
+                estado["turno"]              = 1 - estado["turno"]
+                estado["toques_coletivos"]   = 0
+                estado["toques_individuais"] = {}
+                estado["botao_lancado"]      = None
+                estado["primeira_colisao"]   = None
+                estado["bola_tocou_oponente"] = False
+                estado["timer_toque"]        = 5 * FRAMES_POR_SEG
+                if modo == MODO_COMPUTADOR and estado["turno"] == 1:
+                    estado["fase"] = "computador"
+                else:
+                    estado["fase"] = "selecionar"
+
+        # ── Timer de 5 s por toque (regra dos 12 toques) ─────────
+        if (estado["regra"] == "12toques" and
+                estado["fase"] in ("selecionar", "mirar")):
+            # O timer só corre para jogadores humanos
+            # (computador age em 1 s dentro da fase "computador")
+            if estado["turno"] == 0 or modo == MODO_2JOGADORES:
+                estado["timer_toque"] -= 1
+                if estado["timer_toque"] <= 0:
+                    # Deseleciona botão se estava mirando
+                    if estado.get("botao_sel"):
+                        estado["botao_sel"].selecionado = False
+                        estado["botao_sel"] = None
+                    estado["fase"]          = "infracao"
+                    estado["infracao_msg"]  = "TEMPO ESGOTADO! (máx. 5 segundos)"
+                    estado["infracao_timer"] = 100
+                    estado["infracao_tipo"] = "falta"
+
+        # ── Verificação: todos os botões esgotados (regra 12 toques) ──
+        if estado["fase"] == "selecionar" and estado["regra"] == "12toques":
+            botoes_vez = botoes_t0 if estado["turno"] == 0 else botoes_t1
+            ti = estado["toques_individuais"]
+            if all(ti.get((b.time, b.numero), 0) >= 3 for b in botoes_vez):
+                # Todos os botões do time atingiram o limite individual
+                estado["fase"]          = "infracao"
+                estado["infracao_msg"]  = "Todos os botões esgotados! Posse encerrada."
+                estado["infracao_timer"] = 80
+                estado["infracao_tipo"] = "fim_posse"
+
         # ── Cronômetro regressivo ────────────────────────────
         # Conta frames; a cada 60 frames (1 segundo) decrementa o tempo.
-        # O tempo pausa durante a celebração de gol.
+        # O tempo pausa durante a celebração de gol e infração.
         # Conceito pedagógico: 1 s = 60 frames → divisão e módulo.
-        if estado["fase"] != "gol" and estado["tempo_seg"] > 0:
+        if estado["fase"] not in ("gol", "infracao") and estado["tempo_seg"] > 0:
             estado["frames_acum"] += 1
             if estado["frames_acum"] >= FRAMES_POR_SEG:
                 estado["frames_acum"] = 0
@@ -1421,7 +1900,12 @@ def rodar_jogo(tela, fontes, modo, sons=None):
 
         # Desenha botões
         for b in botoes_t0 + botoes_t1:
-            b.desenhar(tela, fontes["pequena"])
+            if estado["regra"] == "12toques":
+                ti = estado["toques_individuais"]
+                tc = ti.get((b.time, b.numero), 0)
+                b.desenhar(tela, fontes["pequena"], toque_count=tc, maxed_out=(tc >= 3))
+            else:
+                b.desenhar(tela, fontes["pequena"])
 
         # Desenha bola
         bola.desenhar(tela)
@@ -1436,6 +1920,25 @@ def rodar_jogo(tela, fontes, modo, sons=None):
         # Animação de celebração (sobreposta a tudo)
         if estado["fase"] == "gol":
             desenhar_celebracao_gol(tela, estado, fontes)
+
+        # Overlay de infração (regra dos 12 toques)
+        if estado["fase"] == "infracao":
+            overlay = pygame.Surface((LARGURA, ALTURA), pygame.SRCALPHA)
+            overlay.fill((80, 0, 0, 110))
+            tela.blit(overlay, (0, 0))
+            msg = estado.get("infracao_msg", "FALTA!")
+            tipo = estado.get("infracao_tipo", "falta")
+            cor_inf = VERMELHO if tipo == "falta" else AMARELO
+            # Sombra
+            sombra = fontes["grande"].render(msg, True, PRETO)
+            tela.blit(sombra,
+                      (LARGURA // 2 - sombra.get_width() // 2 + 3,
+                       ALTURA  // 2 - sombra.get_height() // 2 + 3))
+            # Texto principal
+            txt_inf = fontes["grande"].render(msg, True, cor_inf)
+            tela.blit(txt_inf,
+                      (LARGURA // 2 - txt_inf.get_width() // 2,
+                       ALTURA  // 2 - txt_inf.get_height() // 2))
 
         atualizar_tela(tela)
         clock.tick(FRAMES_POR_SEG)
@@ -1474,10 +1977,16 @@ def main():
     # Sintetiza sons programaticamente (sem arquivos externos)
     sons = criar_sons()
 
-    # Loop: menu → partida → menu
+    # Loop: menu → escolha de regra → partida → menu
     while True:
         modo = tela_menu(tela, fontes)
-        rodar_jogo(tela, fontes, modo, sons)
+        while True:
+            regra = tela_regras(tela, fontes)
+            if regra != "voltar":
+                break
+            # "voltar" retorna à seleção de modo de jogo
+        turno_inicial = tela_cara_ou_coroa(tela, fontes, modo)
+        rodar_jogo(tela, fontes, modo, regra, turno_inicial, sons)
 
 
 if __name__ == "__main__":
