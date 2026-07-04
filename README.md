@@ -6,7 +6,7 @@
 ![Pygame](https://img.shields.io/badge/Pygame--CE-2.5%2B-green?style=for-the-badge)
 ![Licença](https://img.shields.io/badge/Licen%C3%A7a-MIT-yellow?style=for-the-badge)
 ![Educação](https://img.shields.io/badge/Educa%C3%A7%C3%A3o-P%C3%BAblica-orange?style=for-the-badge)
-![Versão](https://img.shields.io/badge/Vers%C3%A3o-2.0-purple?style=for-the-badge)
+![Versão](https://img.shields.io/badge/Vers%C3%A3o-1.01-purple?style=for-the-badge)
 
 **Jogo pedagógico de Futebol de Botão desenvolvido em Python + Pygame**  
 *Para aulas de Matemática, Física e Programação na rede pública de ensino*
@@ -56,12 +56,13 @@ Durante cada jogada, o jogo exibe mensagens relacionando a partida com conceitos
 ```
 1. Escolha o modo de jogo (2 jogadores ou vs Computador)
 2. Escolha o conjunto de regras (Normal ou 12 Toques)
-3. Aguarde o cara ou coroa para saber quem começa
-4. Clique em um botão do seu time (círculo azul ou vermelho)
-5. Arraste o mouse para definir a direção e a força
-6. Solte o mouse para chutar!
-7. Leve a bola até o gol adversário
-8. Vence quem marcar mais gols em 2 minutos
+3. Escolha o time e a cor principal de cada lado
+4. Aguarde o cara ou coroa para saber quem começa
+5. Clique em um botão do seu time (círculo na cor escolhida)
+6. Arraste o mouse para definir a direção e a força
+7. Solte o mouse para chutar!
+8. Leve a bola até o gol adversário
+9. Vence quem marcar mais gols em 2 minutos
 ```
 
 ### Modos de Jogo
@@ -92,6 +93,7 @@ A **Regra dos 12 Toques** simula as regras oficiais do futebol de botão com sis
 - Cada botão individual pode tocar a bola no **máximo 3 vezes** por posse
 - A posse se mantém enquanto as regras forem respeitadas
 - Ao atingir 12 toques coletivos, a posse é encerrada e transferida ao adversário
+- Se a bola tocar no adversário, mas depois voltar a tocar em um botão do time da vez antes de a jogada acabar, a posse continua
 
 ### Faltas (transferem a posse imediatamente)
 | Situação | Mensagem exibida |
@@ -99,7 +101,7 @@ A **Regra dos 12 Toques** simula as regras oficiais do futebol de botão com sis
 | O botão lançado não toca a bola | *"FALTA! O botão não tocou na bola."* |
 | Botão adversário tocado antes da bola | *"FALTA! Adversário tocado antes da bola."* |
 | Botão individual ultrapassou 3 toques | *"FALTA! Botão X ultrapassou 3 toques individuais."* |
-| A bola toca um botão adversário | *"A bola tocou o adversário! Posse transferida."* |
+| A bola termina a jogada tocando um botão adversário | *"A bola tocou o adversário! Posse transferida."* |
 | Tempo de 5 segundos esgotado sem jogar | *"TEMPO ESGOTADO! (máx. 5 segundos)"* |
 
 ### Painel no HUD (canto esquerdo)
@@ -114,10 +116,11 @@ A **Regra dos 12 Toques** simula as regras oficiais do futebol de botão com sis
 
 - 🪙 **Cara ou coroa** animado antes de cada partida para sortear quem começa
 - ⚖️ **Escolha de regras** com tela dedicada (Regra Normal ou 12 Toques)
+- 🎨 **Seleção de times e cores** antes da partida, com presets e paleta personalizada
 - 🤖 **IA aprimorada** com modo defensivo, mira calculada e seleção posicional de botão
 - ⏱️ **Cronômetro regressivo** de 2 minutos com alerta nos últimos 30s
 - ⏳ **Timer de 5s por jogada** na Regra dos 12 Toques
-- 🔄 **Transferência de posse** ao tocar botão adversário (antes da bola) ou a bola tocar o adversário
+- 🔄 **Transferência de posse** ao tocar botão adversário (antes da bola) ou quando o último toque relevante da bola termina no adversário
 - ⚽ **Detecção de gol** com celebração animada
 - 🎉 **Confete colorido** com física de partículas (gravidade + atrito)
 - 🔊 **Sons sintetizados** em código: chute, colisão de botões, colisão com bola e fanfarra de gol
@@ -198,6 +201,7 @@ futebol-botao-python/
 | `desenhar_celebracao_gol()` | Flash, GOOOOOL! pulsante, confete |
 | `jogada_computador()` | IA com modo defensivo e mira posicional |
 | `tela_cara_ou_coroa()` | Animação de moeda girando para sortear quem começa |
+| `tela_times()` | Seleção de times e personalização de cores antes da partida |
 | `tela_regras()` | Tela de seleção entre Regra Normal e 12 Toques |
 | `tela_sobre()` | Créditos com scroll e estrelas animadas |
 | `tela_menu()` | Menu principal |
@@ -207,16 +211,17 @@ futebol-botao-python/
 
 ## 📋 Histórico de Versões
 
-### v2.0 — Julho de 2026
+### v1.01 — Julho de 2026
 **Novas funcionalidades:**
 - 🪙 Tela de **cara ou coroa** animada antes de cada partida (moeda com rotação 3D simulada)
 - ⚖️ **Tela de seleção de regras**: Regra Normal ou Regra dos 12 Toques
+- 🎨 **Tela de seleção de times** com nomes predefinidos e cores personalizadas
 - 🔴 **Regra dos 12 Toques** completa:
   - Limite de 12 toques coletivos por posse
   - Limite de 3 toques individuais por botão
   - Falta ao errar a bola, tocar adversário antes da bola ou ultrapassar limite individual
   - **Timer de 5 segundos** por jogada (falta ao estourar o tempo)
-  - Transferência de posse quando a bola toca um botão adversário
+  - Transferência de posse quando o último toque relevante da bola termina em um botão adversário
   - Painel visual no HUD com contador de toques, timer e indicador por botão
   - Botões esgotados ficam escuros e não selecionáveis
 
@@ -230,6 +235,8 @@ futebol-botao-python/
 
 **Correções:**
 - Corrigido bug em que a bola tocando o botão adversário não transferia a posse (velocidade da bola agora é capturada *antes* da colisão para detecção correta)
+- Corrigida a regra de posse para ignorar a transferência quando a bola bate no adversário, mas depois volta a tocar em um botão do time da vez
+- Corrigida a tela de cara ou coroa para exibir corretamente o time e a cor personalizados
 
 ### v1.0 — Julho de 2026
 - Versão inicial com campo, física, colisões, placar e cronômetro
@@ -248,7 +255,6 @@ futebol-botao-python/
 - [ ] Perguntas de matemática integradas às jogadas
 - [ ] Modo torneio com placar acumulado
 - [ ] Estatísticas da partida (chutes, distância percorrida)
-- [ ] Seleção de times e cores personalizadas
 - [ ] IA com nível de dificuldade ajustável
 
 ---
@@ -291,5 +297,4 @@ Feito com ❤️ para a educação pública paulista
 **Julho de 2026**
 
 </div>
-
 

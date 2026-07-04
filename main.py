@@ -71,6 +71,26 @@ BEGE         = (240, 220, 180)
 MODO_2JOGADORES = "2jogadores"
 MODO_COMPUTADOR = "computador"
 
+TIMES_DISPONIVEIS = [
+    {"nome": "Azul",         "cor": AZUL},
+    {"nome": "Vermelho",     "cor": VERMELHO},
+    {"nome": "Brasil",       "cor": (34, 139, 34)},
+    {"nome": "Argentina",    "cor": (95, 180, 255)},
+    {"nome": "Palmeiras",    "cor": (0, 120, 60)},
+    {"nome": "Flamengo",     "cor": (190, 30, 30)},
+    {"nome": "Corinthians",  "cor": (235, 235, 235)},
+    {"nome": "Santos",       "cor": (250, 250, 250)},
+    {"nome": "Sao Paulo",    "cor": (245, 245, 245)},
+    {"nome": "Gremio",       "cor": (0, 140, 190)},
+    {"nome": "Barcelona",    "cor": (0, 90, 170)},
+    {"nome": "Real Madrid",  "cor": (248, 248, 248)},
+]
+
+CORES_PERSONALIZADAS = [
+    AZUL, VERMELHO, VERDE_CAMPO, AMARELO, LARANJA, CIANO,
+    ROXO, BRANCO, (255, 105, 180), (40, 40, 40), (0, 130, 160), (140, 90, 40),
+]
+
 # Botão de tela cheia — retângulo fixo no canto superior direito do HUD
 BTN_FS_RECT = pygame.Rect(LARGURA - 40, 6, 32, 30)
 
@@ -100,6 +120,24 @@ MSGS_PEDAGOGICAS = [
 # ──────────────────────────────────────────────
 
 _tela_cheia = False   # estado atual: False = janela, True = tela cheia
+
+
+def cor_texto_contraste(cor):
+    """Escolhe preto ou branco para manter contraste legivel."""
+    brilho = cor[0] * 0.299 + cor[1] * 0.587 + cor[2] * 0.114
+    return PRETO if brilho >= 165 else BRANCO
+
+
+def desenhar_texto_contornado(tela, fonte, texto, cor_texto, pos):
+    """Desenha texto com contorno para manter legibilidade em qualquer fundo."""
+    cor_contorno = cor_texto_contraste(cor_texto)
+    txt_contorno = fonte.render(texto, True, cor_contorno)
+    txt_principal = fonte.render(texto, True, cor_texto)
+    x, y = pos
+    for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+        tela.blit(txt_contorno, (x + dx, y + dy))
+    tela.blit(txt_principal, pos)
+    return txt_principal
 
 
 def alternar_tela_cheia():
@@ -328,7 +366,7 @@ class Botao(Objeto):
     """
     def __init__(self, x, y, cor, time, numero):
         super().__init__(x, y, RAIO_BOTAO, cor)
-        self.time   = time    # 0 = time 1 (azul), 1 = time 2 (vermelho)
+        self.time   = time    # 0 = lado esquerdo, 1 = lado direito
         self.numero = numero  # número do botão dentro do time
         self.selecionado = False
 
@@ -343,10 +381,12 @@ class Botao(Objeto):
         cor_corpo = CINZA_ESCURO if maxed_out else self.cor
         pygame.draw.circle(tela, cor_corpo, self.pos, self.raio)
         # Borda
-        cor_borda = AMARELO if self.selecionado else (CINZA if maxed_out else BRANCO)
+        cor_padrao = cor_texto_contraste(cor_corpo)
+        cor_borda = AMARELO if self.selecionado else (CINZA if maxed_out else cor_padrao)
         pygame.draw.circle(tela, cor_borda, self.pos, self.raio, 2)
         # Número do botão (para identificação)
-        txt = fonte_pequena.render(str(self.numero + 1), True, BRANCO)
+        cor_numero = BRANCO if maxed_out else cor_padrao
+        txt = fonte_pequena.render(str(self.numero + 1), True, cor_numero)
         tela.blit(txt, (self.pos[0] - txt.get_width()//2,
                         self.pos[1] - txt.get_height()//2))
         # Indicador de toques individuais (regra de 12 toques)
@@ -444,11 +484,11 @@ class Particula:
         return self.vida > 0
 
 
-def criar_botoes_time(time):
+def criar_botoes_time(time, cor_personalizada=None):
     """
     Cria 3 botões para o time indicado (0 ou 1) em posições iniciais.
-    Time 0 (azul) → lado esquerdo
-    Time 1 (vermelho) → lado direito
+    Time 0 → lado esquerdo
+    Time 1 → lado direito
 
     MELHORIA FUTURA: adicionar mais botões (goleiro, meio, ataque).
     """
@@ -457,14 +497,14 @@ def criar_botoes_time(time):
 
     botoes = []
     if time == 0:
-        cor       = AZUL
+        cor       = cor_personalizada or AZUL
         posicoes  = [
             (cx - 200, cy - 100),   # atacante esquerdo
             (cx - 200, cy + 100),   # atacante direito
             (cx - 320, cy),         # meio
         ]
     else:
-        cor       = VERMELHO
+        cor       = cor_personalizada or VERMELHO
         posicoes  = [
             (cx + 200, cy - 100),
             (cx + 200, cy + 100),
@@ -630,8 +670,9 @@ def desenhar_hud(tela, fontes, estado):
     tela.blit(txt_placar, (LARGURA // 2 - txt_placar.get_width() // 2, 44))
 
     # Indicador de turno (canto esquerdo)
-    turno_str = f"Vez: {'AZUL' if estado['turno'] == 0 else 'VERMELHO'}"
-    cor_turno = AZUL if estado['turno'] == 0 else VERMELHO
+    nome_turno = estado["nome_j1"] if estado["turno"] == 0 else estado["nome_j2"]
+    turno_str = f"Vez: {nome_turno}"
+    cor_turno = estado["cor_j1"] if estado["turno"] == 0 else estado["cor_j2"]
     txt_turno = fonte_media.render(turno_str, True, cor_turno)
     tela.blit(txt_turno, (10, 5))
 
@@ -648,7 +689,7 @@ def desenhar_hud(tela, fontes, estado):
         seg_rest = max(0, math.ceil(tt / FRAMES_POR_SEG))
         fase_ativa = estado.get("fase", "") in ("selecionar", "mirar")
         turno_humano = (estado.get("turno") == 0 or
-                        estado.get("nome_j2") != "COMPUTADOR")
+                        not estado.get("cpu_ativo", False))
         if fase_ativa and turno_humano:
             cor_tt = VERMELHO if seg_rest <= 2 else (LARANJA if seg_rest <= 3 else BRANCO)
             txt_tt = fonte_media.render(f"⏱ {seg_rest}s", True, cor_tt)
@@ -776,7 +817,7 @@ def desenhar_celebracao_gol(tela, estado, fontes):
     timer    = estado["timer_gol"]
     gol_time = estado.get("gol_time", 0)
     nome     = estado["nome_j1"] if gol_time == 0 else estado["nome_j2"]
-    cor_time = AZUL if gol_time == 0 else VERMELHO
+    cor_time = estado["cor_j1"] if gol_time == 0 else estado["cor_j2"]
 
     # ─ Flash colorido nos primeiros 18 frames ────────────────
     if timer < 18:
@@ -1007,7 +1048,7 @@ def tela_sobre(tela, fontes):
         ("texto",     "Sem imagens ou sons externos — tudo é programado!", BRANCO),
         ("separador", "",                                                 CINZA),
 
-        ("texto",     "Versão 2.0 — Julho de 2026",                       CINZA),
+        ("texto",     "Versão 1.01 — Julho de 2026",                      CINZA),
     ]
 
     # Pré-renderiza todas as linhas
@@ -1118,16 +1159,16 @@ def tela_sobre(tela, fontes):
                     return
 
 
-def tela_cara_ou_coroa(tela, fontes, modo):
+def tela_cara_ou_coroa(tela, fontes, configuracao_times):
     """
     Anima uma moeda girando e sorteia quem começa jogando.
-    Retorna 0 (time azul/jogador 1) ou 1 (time vermelho/computador).
+    Retorna 0 (jogador 1) ou 1 (jogador 2/computador).
     """
     clock  = pygame.time.Clock()
-    nome_j1 = "AZUL"
-    nome_j2 = "COMPUTADOR" if modo == MODO_COMPUTADOR else "VERMELHO"
-    cor_j1  = AZUL
-    cor_j2  = VERMELHO
+    nome_j1 = configuracao_times[0]["nome"]
+    nome_j2 = configuracao_times[1]["nome"]
+    cor_j1  = configuracao_times[0]["cor"]
+    cor_j2  = configuracao_times[1]["cor"]
 
     resultado = random.randint(0, 1)   # sorteia imediatamente
 
@@ -1161,6 +1202,23 @@ def tela_cara_ou_coroa(tela, fontes, modo):
         tela.blit(t1, (cx - t1.get_width() // 2, 60))
         t2 = fontes["pequena"].render("Sorteando quem começa jogando...", True, BEGE)
         tela.blit(t2, (cx - t2.get_width() // 2, 108))
+
+        cara_rect = pygame.Rect(cx - 320, 150, 250, 74)
+        coroa_rect = pygame.Rect(cx + 70, 150, 250, 74)
+        for face_rect, face_nome, nome_time, cor_time in (
+            (cara_rect, "CARA", nome_j1, cor_j1),
+            (coroa_rect, "COROA", nome_j2, cor_j2),
+        ):
+            pygame.draw.rect(tela, (28, 28, 52), face_rect, border_radius=14)
+            pygame.draw.rect(tela, BRANCO, face_rect, 1, border_radius=14)
+            pygame.draw.rect(tela, cor_time, face_rect, 3, border_radius=14)
+            txt_face = fontes["pequena"].render(face_nome, True, BRANCO)
+            tela.blit(txt_face, (face_rect.centerx - txt_face.get_width() // 2, face_rect.y + 10))
+            txt_time = fontes["media"].render(nome_time, True, cor_time)
+            desenhar_texto_contornado(
+                tela, fontes["media"], nome_time, cor_time,
+                (face_rect.centerx - txt_time.get_width() // 2, face_rect.y + 34)
+            )
 
         # ── Desenho da moeda ────────────────────────────────
         if fase_anim == 0:
@@ -1208,10 +1266,16 @@ def tela_cara_ou_coroa(tela, fontes, modo):
             nome_venc = nome_j1 if resultado == 0 else nome_j2
             cor_venc  = cor_j1  if resultado == 0 else cor_j2
             face_str  = "CARA" if resultado == 0 else "COROA"
-            t_face = fontes["media"].render(f"Saiu: {face_str}!", True, BRANCO)
-            tela.blit(t_face, (cx - t_face.get_width() // 2, cy + R + 20))
+            t_face = fontes["media"].render(f"Saiu: {face_str}!", True, cor_venc)
+            desenhar_texto_contornado(
+                tela, fontes["media"], f"Saiu: {face_str}!", cor_venc,
+                (cx - t_face.get_width() // 2, cy + R + 20)
+            )
             t_vez = fontes["grande"].render(f"{nome_venc} começa!", True, cor_venc)
-            tela.blit(t_vez, (cx - t_vez.get_width() // 2, cy + R + 55))
+            desenhar_texto_contornado(
+                tela, fontes["grande"], f"{nome_venc} começa!", cor_venc,
+                (cx - t_vez.get_width() // 2, cy + R + 55)
+            )
             t_cont = fontes["pequena"].render(
                 "Clique ou pressione qualquer tecla para jogar", True, CINZA)
             tela.blit(t_cont, (cx - t_cont.get_width() // 2, cy + R + 100))
@@ -1352,6 +1416,172 @@ def tela_regras(tela, fontes):
                     return "voltar"
 
 
+def tela_times(tela, fontes, modo):
+    """
+    Tela para escolher os times e personalizar a cor principal de cada lado.
+    Retorna uma lista com duas configuracoes de time ou "voltar".
+    """
+    fonte_grande  = fontes["grande"]
+    fonte_media   = fontes["media"]
+    fonte_pequena = fontes["pequena"]
+    clock = pygame.time.Clock()
+
+    selecoes = [
+        {"preset": 0, "nome": TIMES_DISPONIVEIS[0]["nome"], "cor": TIMES_DISPONIVEIS[0]["cor"]},
+        {"preset": 1, "nome": TIMES_DISPONIVEIS[1]["nome"], "cor": TIMES_DISPONIVEIS[1]["cor"]},
+    ]
+
+    cards = [
+        pygame.Rect(40, 170, 380, 280),
+        pygame.Rect(480, 170, 380, 280),
+    ]
+    btn_voltar = pygame.Rect(LARGURA // 2 - 130, 470, 260, 42)
+    btn_confirmar = pygame.Rect(LARGURA // 2 - 170, 522, 340, 48)
+
+    while True:
+        tela.fill((26, 90, 48))
+
+        t1 = fonte_grande.render("ESCOLHA OS TIMES", True, AMARELO)
+        tela.blit(t1, (LARGURA // 2 - t1.get_width() // 2, 70))
+        subtitulo = ("Defina nome e cor do Jogador 1 e do Computador"
+                     if modo == MODO_COMPUTADOR
+                     else "Defina nome e cor dos dois times antes da partida")
+        t2 = fonte_pequena.render(subtitulo, True, BEGE)
+        tela.blit(t2, (LARGURA // 2 - t2.get_width() // 2, 118))
+        dica = fonte_pequena.render(
+            "Use < e > para trocar o time e clique nas cores para personalizar.",
+            True, BRANCO)
+        tela.blit(dica, (LARGURA // 2 - dica.get_width() // 2, 140))
+
+        mx, my = escalar_mouse(pygame.mouse.get_pos())
+        controles = []
+
+        for idx, card in enumerate(cards):
+            selecao = selecoes[idx]
+            cor_time = selecao["cor"]
+            cor_texto = cor_texto_contraste(cor_time)
+            titulo = "JOGADOR 1" if idx == 0 else ("COMPUTADOR" if modo == MODO_COMPUTADOR else "JOGADOR 2")
+
+            prev_rect = pygame.Rect(card.x + 18, card.y + 54, 42, 42)
+            next_rect = pygame.Rect(card.right - 60, card.y + 54, 42, 42)
+            hover_prev = prev_rect.collidepoint(mx, my)
+            hover_next = next_rect.collidepoint(mx, my)
+
+            pygame.draw.rect(tela, (22, 38, 28), card, border_radius=16)
+            pygame.draw.rect(tela, cor_time, card, 3, border_radius=16)
+
+            txt_titulo = fonte_media.render(titulo, True, BRANCO)
+            tela.blit(txt_titulo, (card.centerx - txt_titulo.get_width() // 2, card.y + 18))
+
+            pygame.draw.rect(tela, CIANO if hover_prev else CINZA_ESCURO, prev_rect, border_radius=8)
+            pygame.draw.rect(tela, BRANCO, prev_rect, 2, border_radius=8)
+            pygame.draw.rect(tela, CIANO if hover_next else CINZA_ESCURO, next_rect, border_radius=8)
+            pygame.draw.rect(tela, BRANCO, next_rect, 2, border_radius=8)
+            txt_prev = fonte_media.render("<", True, BRANCO)
+            txt_next = fonte_media.render(">", True, BRANCO)
+            tela.blit(txt_prev, (prev_rect.centerx - txt_prev.get_width() // 2,
+                                 prev_rect.centery - txt_prev.get_height() // 2))
+            tela.blit(txt_next, (next_rect.centerx - txt_next.get_width() // 2,
+                                 next_rect.centery - txt_next.get_height() // 2))
+
+            txt_nome = fonte_grande.render(selecao["nome"], True, cor_time)
+            tela.blit(txt_nome, (card.centerx - txt_nome.get_width() // 2, card.y + 58))
+
+            centro = (card.centerx, card.y + 140)
+            pygame.draw.circle(tela, CINZA_ESCURO, (centro[0] + 3, centro[1] + 3), 30)
+            pygame.draw.circle(tela, cor_time, centro, 30)
+            pygame.draw.circle(tela, cor_texto, centro, 30, 2)
+            txt_num = fonte_media.render(str(idx + 1), True, cor_texto)
+            tela.blit(txt_num, (centro[0] - txt_num.get_width() // 2,
+                                centro[1] - txt_num.get_height() // 2))
+
+            txt_cor = fonte_pequena.render("Cor personalizada", True, BEGE)
+            tela.blit(txt_cor, (card.centerx - txt_cor.get_width() // 2, card.y + 182))
+
+            paleta_rects = []
+            base_x = card.x + 32
+            base_y = card.y + 210
+            for cor_idx, cor in enumerate(CORES_PERSONALIZADAS):
+                col = cor_idx % 4
+                row = cor_idx // 4
+                rect = pygame.Rect(base_x + col * 82, base_y + row * 28, 52, 20)
+                paleta_rects.append((rect, cor))
+                pygame.draw.rect(tela, cor, rect, border_radius=6)
+                borda = cor_texto_contraste(cor) if cor == cor_time else CINZA
+                espessura = 3 if cor == cor_time else 1
+                pygame.draw.rect(tela, borda, rect, espessura, border_radius=6)
+
+            controles.append({
+                "prev": prev_rect,
+                "next": next_rect,
+                "paleta": paleta_rects,
+            })
+
+        hover_voltar = btn_voltar.collidepoint(mx, my)
+        hover_confirmar = btn_confirmar.collidepoint(mx, my)
+
+        pygame.draw.rect(tela, CINZA_ESCURO, btn_voltar, border_radius=10)
+        pygame.draw.rect(tela, CIANO if hover_voltar else CINZA, btn_voltar, 2, border_radius=10)
+        txt_voltar = fonte_media.render("Voltar", True, BRANCO)
+        tela.blit(txt_voltar, (btn_voltar.centerx - txt_voltar.get_width() // 2,
+                               btn_voltar.centery - txt_voltar.get_height() // 2))
+
+        pygame.draw.rect(tela, (20, 120, 70) if not hover_confirmar else VERDE_CAMPO,
+                         btn_confirmar, border_radius=12)
+        pygame.draw.rect(tela, BRANCO, btn_confirmar, 2, border_radius=12)
+        txt_ok = fonte_media.render("Confirmar selecao", True, BRANCO)
+        tela.blit(txt_ok, (btn_confirmar.centerx - txt_ok.get_width() // 2,
+                           btn_confirmar.centery - txt_ok.get_height() // 2))
+
+        desenhar_btn_fullscreen(tela)
+        atualizar_tela(tela)
+        clock.tick(FRAMES_POR_SEG)
+
+        for evento in pygame.event.get():
+            if evento.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if evento.type == pygame.KEYDOWN:
+                if evento.key == pygame.K_ESCAPE:
+                    return "voltar"
+                if evento.key == pygame.K_F11:
+                    alternar_tela_cheia()
+            if evento.type == pygame.MOUSEBUTTONDOWN and evento.button == 1:
+                pos_esc = escalar_mouse(evento.pos)
+                if BTN_FS_RECT.collidepoint(pos_esc):
+                    alternar_tela_cheia()
+                    continue
+                if btn_voltar.collidepoint(pos_esc):
+                    return "voltar"
+                if btn_confirmar.collidepoint(pos_esc):
+                    return [
+                        {"nome": selecoes[0]["nome"], "cor": selecoes[0]["cor"]},
+                        {"nome": selecoes[1]["nome"], "cor": selecoes[1]["cor"]},
+                    ]
+
+                for idx, controle in enumerate(controles):
+                    if controle["prev"].collidepoint(pos_esc):
+                        novo_idx = (selecoes[idx]["preset"] - 1) % len(TIMES_DISPONIVEIS)
+                        selecoes[idx]["preset"] = novo_idx
+                        selecoes[idx]["nome"] = TIMES_DISPONIVEIS[novo_idx]["nome"]
+                        selecoes[idx]["cor"] = TIMES_DISPONIVEIS[novo_idx]["cor"]
+                        break
+                    if controle["next"].collidepoint(pos_esc):
+                        novo_idx = (selecoes[idx]["preset"] + 1) % len(TIMES_DISPONIVEIS)
+                        selecoes[idx]["preset"] = novo_idx
+                        selecoes[idx]["nome"] = TIMES_DISPONIVEIS[novo_idx]["nome"]
+                        selecoes[idx]["cor"] = TIMES_DISPONIVEIS[novo_idx]["cor"]
+                        break
+                    clicou_cor = False
+                    for rect, cor in controle["paleta"]:
+                        if rect.collidepoint(pos_esc):
+                            selecoes[idx]["cor"] = cor
+                            clicou_cor = True
+                            break
+                    if clicou_cor:
+                        break
+
+
 def tela_menu(tela, fontes):
     """
     Exibe o menu inicial para escolher o modo de jogo.
@@ -1450,10 +1680,10 @@ def tela_fim_de_jogo(tela, fontes, estado):
 
     if estado["gols_j1"] > estado["gols_j2"]:
         vencedor = estado["nome_j1"]
-        cor_v = AZUL
+        cor_v = estado["cor_j1"]
     elif estado["gols_j2"] > estado["gols_j1"]:
         vencedor = estado["nome_j2"]
-        cor_v = VERMELHO
+        cor_v = estado["cor_j2"]
     else:
         vencedor = "EMPATE!"
         cor_v = AMARELO
@@ -1505,7 +1735,8 @@ def tela_fim_de_jogo(tela, fontes, estado):
 # LOOP PRINCIPAL DO JOGO
 # ──────────────────────────────────────────────
 
-def rodar_jogo(tela, fontes, modo, regra="normal", turno_inicial=0, sons=None):
+def rodar_jogo(tela, fontes, modo, regra="normal", turno_inicial=0, sons=None,
+               configuracao_times=None):
     """
     Loop principal de uma partida.
     Gerencia eventos, atualiza física e desenha tudo na tela.
@@ -1515,17 +1746,30 @@ def rodar_jogo(tela, fontes, modo, regra="normal", turno_inicial=0, sons=None):
     clock = pygame.time.Clock()
 
     # ── Criação dos objetos ──────────────────────────────
-    botoes_t0 = criar_botoes_time(0)   # time azul (jogador 1)
-    botoes_t1 = criar_botoes_time(1)   # time vermelho (jogador 2 ou PC)
+    if configuracao_times is None:
+        configuracao_times = [
+            {"nome": "AZUL", "cor": AZUL},
+            {"nome": "VERMELHO", "cor": VERMELHO},
+        ]
+
+    nome_j1 = configuracao_times[0]["nome"]
+    nome_j2 = configuracao_times[1]["nome"]
+    cor_j1 = configuracao_times[0]["cor"]
+    cor_j2 = configuracao_times[1]["cor"]
+
+    botoes_t0 = criar_botoes_time(0, cor_j1)
+    botoes_t1 = criar_botoes_time(1, cor_j2)
     bola      = criar_bola()
 
     # ── Estado do jogo ───────────────────────────────────
-    nome_j2 = "COMPUTADOR" if modo == MODO_COMPUTADOR else "VERMELHO"
     estado = {
         "gols_j1":           0,
         "gols_j2":           0,
-        "nome_j1":           "AZUL",
+        "nome_j1":           nome_j1,
         "nome_j2":           nome_j2,
+        "cor_j1":            cor_j1,
+        "cor_j2":            cor_j2,
+        "cpu_ativo":         (modo == MODO_COMPUTADOR),
         "turno":             turno_inicial,  # definido pelo cara ou coroa
         "num_turno":         1,
         # Fases: selecionar | mirar | animando | computador | gol | infracao
@@ -1553,6 +1797,7 @@ def rodar_jogo(tela, fontes, modo, regra="normal", turno_inicial=0, sons=None):
         "timer_toque":          5 * FRAMES_POR_SEG,  # 300 frames = 5 s
         # ── Bola tocou botão adversário ─────────────────
         "bola_tocou_oponente":  False,
+        "ultimo_contato_bola":  None,
     }
 
     delay_computador = 0   # pequeno delay antes da jogada do PC
@@ -1561,7 +1806,6 @@ def rodar_jogo(tela, fontes, modo, regra="normal", turno_inicial=0, sons=None):
     # objetos estiverem sobrepostos, causando distorção.
     cd_som_bola  = 0   # cooldown para som botão↔bola
     cd_som_botao = 0   # cooldown para som botão↔botão
-    cd_bola_op   = 0   # cooldown para deteção bola↔botão adversario
 
     # ── Loop principal ───────────────────────────────────
     while True:
@@ -1641,6 +1885,7 @@ def rodar_jogo(tela, fontes, modo, regra="normal", turno_inicial=0, sons=None):
                         estado["botao_lancado"]   = b
                         estado["primeira_colisao"] = None
                         estado["bola_tocou_oponente"] = False
+                        estado["ultimo_contato_bola"] = None
                         estado["timer_toque"]     = 5 * FRAMES_POR_SEG
                         estado["msg_pedagogica"] = random.choice(MSGS_PEDAGOGICAS)
                         if sons and sons.get("chute"):
@@ -1661,6 +1906,7 @@ def rodar_jogo(tela, fontes, modo, regra="normal", turno_inicial=0, sons=None):
                     estado["botao_lancado"]    = botao_cpu
                     estado["primeira_colisao"] = None
                     estado["bola_tocou_oponente"] = False
+                    estado["ultimo_contato_bola"] = None
                 estado["fase"] = "animando"
                 estado["msg_pedagogica"] = random.choice(MSGS_PEDAGOGICAS)
 
@@ -1676,8 +1922,12 @@ def rodar_jogo(tela, fontes, modo, regra="normal", turno_inicial=0, sons=None):
             bola.colidir_bordas()
 
             # Colisões botão ↔ bola
+            houve_contato_bola = False
             for b in todos_botoes:
                 if b.verificar_colisao(bola):
+                    houve_contato_bola = True
+                    contato_bola = (b.time, b.numero)
+                    novo_contato = estado.get("ultimo_contato_bola") != contato_bola
                     # Captura velocidade da bola ANTES da colisão
                     # (após a colisão frontal a bola pode parar — checar depois daria falso negativo)
                     vel_bola_antes = abs(bola.vx) + abs(bola.vy)
@@ -1687,16 +1937,21 @@ def rodar_jogo(tela, fontes, modo, regra="normal", turno_inicial=0, sons=None):
                             estado.get("botao_lancado") is b and
                             estado.get("primeira_colisao") is None):
                         estado["primeira_colisao"] = "bola"
-                    # Detecta se a bola tocou botão adversário (qualquer regra)
-                    if (b.time != estado["turno"] and cd_bola_op == 0 and
-                            vel_bola_antes > 0.5):
-                        estado["bola_tocou_oponente"] = True
-                        cd_bola_op = 15
+                    # A posse só passa se o último contato relevante da bola
+                    # terminar no adversário.
+                    if estado["regra"] == "12toques" and novo_contato and vel_bola_antes > 0.5:
+                        if b.time != estado["turno"]:
+                            estado["bola_tocou_oponente"] = True
+                        elif estado["bola_tocou_oponente"]:
+                            estado["bola_tocou_oponente"] = False
+                    estado["ultimo_contato_bola"] = contato_bola
                     # Toca som apenas se o cooldown zerou e há velocidade real
                     if cd_som_bola == 0 and (abs(b.vx) + abs(b.vy)) > 1.0:
                         if sons and sons.get("bola"):
                             sons["bola"].play()
                         cd_som_bola = 8   # bloqueia por 8 frames (~0,13s)
+            if not houve_contato_bola:
+                estado["ultimo_contato_bola"] = None
 
             # Colisões botão ↔ botão
             for i in range(len(todos_botoes)):
@@ -1721,7 +1976,6 @@ def rodar_jogo(tela, fontes, modo, regra="normal", turno_inicial=0, sons=None):
             # Decrementa cooldowns a cada frame
             if cd_som_bola  > 0: cd_som_bola  -= 1
             if cd_som_botao > 0: cd_som_botao -= 1
-            if cd_bola_op   > 0: cd_bola_op   -= 1
 
             # Verifica gol
             marcou = verificar_gol(bola)
@@ -1775,6 +2029,7 @@ def rodar_jogo(tela, fontes, modo, regra="normal", turno_inicial=0, sons=None):
                     # Limpa rastreamento do turno
                     estado["botao_lancado"]    = None
                     estado["primeira_colisao"] = None
+                    estado["ultimo_contato_bola"] = None
 
                     if infracao:
                         estado["fase"]          = "infracao"
@@ -1815,8 +2070,8 @@ def rodar_jogo(tela, fontes, modo, regra="normal", turno_inicial=0, sons=None):
             estado["timer_gol"] += 1
             if estado["timer_gol"] > FRAMES_POR_SEG * 3:  # 3 segundos
                 # Reinicia bola e botões
-                botoes_t0 = criar_botoes_time(0)
-                botoes_t1 = criar_botoes_time(1)
+                botoes_t0 = criar_botoes_time(0, estado["cor_j1"])
+                botoes_t1 = criar_botoes_time(1, estado["cor_j2"])
                 bola      = criar_bola()
                 # Zera contagens da regra dos 12 toques
                 estado["toques_coletivos"]  = 0
@@ -1824,6 +2079,7 @@ def rodar_jogo(tela, fontes, modo, regra="normal", turno_inicial=0, sons=None):
                 estado["botao_lancado"]     = None
                 estado["primeira_colisao"]  = None
                 estado["bola_tocou_oponente"] = False
+                estado["ultimo_contato_bola"] = None
                 # Alterna turno após gol
                 estado["turno"] = 1 - estado["turno"]
                 estado["timer_toque"] = 5 * FRAMES_POR_SEG
@@ -1843,6 +2099,7 @@ def rodar_jogo(tela, fontes, modo, regra="normal", turno_inicial=0, sons=None):
                 estado["botao_lancado"]      = None
                 estado["primeira_colisao"]   = None
                 estado["bola_tocou_oponente"] = False
+                estado["ultimo_contato_bola"] = None
                 estado["timer_toque"]        = 5 * FRAMES_POR_SEG
                 if modo == MODO_COMPUTADOR and estado["turno"] == 1:
                     estado["fase"] = "computador"
@@ -1982,11 +2239,16 @@ def main():
         modo = tela_menu(tela, fontes)
         while True:
             regra = tela_regras(tela, fontes)
-            if regra != "voltar":
+            if regra == "voltar":
                 break
-            # "voltar" retorna à seleção de modo de jogo
-        turno_inicial = tela_cara_ou_coroa(tela, fontes, modo)
-        rodar_jogo(tela, fontes, modo, regra, turno_inicial, sons)
+
+            configuracao_times = tela_times(tela, fontes, modo)
+            if configuracao_times == "voltar":
+                continue
+
+            turno_inicial = tela_cara_ou_coroa(tela, fontes, configuracao_times)
+            rodar_jogo(tela, fontes, modo, regra, turno_inicial, sons, configuracao_times)
+            break
 
 
 if __name__ == "__main__":
